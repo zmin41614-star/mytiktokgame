@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Game</title>
+    <link rel="icon" href="data:,">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #0b1426; font-family: sans-serif; overflow: hidden; color: white; user-select: none; }
+        #status { position: absolute; top: 20px; left: 20px; font-size: 18px; color: #ffcc00; font-weight: bold; }
+        #leaderboard { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px; border: 2px solid #ff007f; width: 180px; }
+        #leaderboard h3 { font-size: 14px; text-align: center; color: #ff007f; margin-bottom: 8px; }
+        .leader-item { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+        #simple-winner-box { position: absolute; bottom: 20px; right: 20px; background: rgba(255, 215, 0, 0.2); border: 2px solid #ffd700; padding: 8px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; color: #ffd700; display: none; }
+        #control-panel { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; width: 80%; max-width: 300px; z-index: 10; }
+        input { padding: 14px; border-radius: 8px; border: 1px solid #333; background: #222; color: #fff; font-size: 16px; text-align: center; }
+        button { padding: 14px; border-radius: 8px; border: none; background: #28a745; color: white; font-weight: bold; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div id="status">TIME: <span id="game-time">00:00</span></div>
+    <div id="leaderboard"><h3>TOP ARENA</h3><div id="leader-list"></div></div>
+    <div id="simple-winner-box"> WINNER: <span id="winner-text">-</span></div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="control-panel"><input type="text" id="username" placeholder="TikTok Username"><button id="connectBtn" onclick="connectTikTok()">Connect</button></div>
+    <script>
+        var canvas = document.getElementById('gameCanvas'); var ctx = canvas.getContext('2d');
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resize); resize();
+        var players = {}; var startTime = Date.now(); var audioCtx = null;
+        var apiEndpoints = ["wss://://onrender.com", "wss://tiktok-live-feed.glitch.me", "wss://tiktok-live-battle-game.replit.app/ws"];
+        var currentApiIndex = 0; var ws = null;
+        function playHitSound() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(function(e){});
+                var osc = audioCtx.createOscillator(); var gain = audioCtx.createGain(); osc.type = 'triangle';
+                osc.frequency.setValueAtTime(180, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                gain.gain.setValueAtTime(0.4, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+            } catch (e) {}
+        }
+        setInterval(function() {
+            try {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                var diff = Date.now() - startTime; var m = Math.floor(diff / 60000); var s = Math.floor((diff % 60000) / 1000);
+                document.getElementById('game-time').innerText = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+                var ids = Object.keys(players);
+                for (var i = 0; i < ids.length; i++) {
+                    var p = players[ids[i]]; if (!p) continue; p.x += p.vx; p.y += p.vy;
+                    if (p.x - p.r < 0 || p.x + p.r > canvas.width) p.vx *= -1; if (p.y - p.r < 0 || p.y + p.r > canvas.height) p.vy *= -1;
+                    ctx.save(); ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 3; ctx.stroke(); ctx.closePath(); ctx.clip();
+                    if (p.loaded && p.img) { ctx.drawImage(p.img, p.x - p.r, p.y - p.r, p.r * 2, p.r * 2); } else { ctx.fillStyle = '#555'; ctx.fill(); } ctx.restore();
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(p.name, p.x, p.y - p.r - 6); ctx.fillText(p.score, p.x, p.y + 4);
+                }
+                for (var i = 0; i < ids.length; i++) {
+                    for (var j = i + 1; j < ids.length; j++) {
+                        var p1 = players[ids[i]]; var p2 = players[ids[j]]; if (!p1 || !p2) continue;
+                        var dx = p1.x - p2.x; var dy = p1.y - p2.y; var dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < p1.r + p2.r) {
+                            if (p1.score !== p2.score) {
+                                var winner = p1.score > p2.score ? p1 : p2; var loser = p1.score > p2.score ? p2 : p1;
+                                winner.score += loser.score; winner.r = 20 + Math.min(winner.score / 5, 80); playHitSound(); delete players[loser.id];
+                            } else { p1.vx *= -1; p1.vy *= -1; p2.vx *= -1; p2.vy *= -1; }
+                        }
+                    }
+                }
+                var arr = []; for (var i = 0; i < ids.length; i++) { if (players[ids[i]]) arr.push(players[ids[i]]); }
+                arr.sort(function(a, b) { return b.score - a.score; });
+                var list = document.getElementById('leader-list'); list.innerHTML = '';
+                for (var i = 0; i < Math.min(arr.length, 5); i++) { list.innerHTML += '<div class="leader-item"><span>' + (i + 1) + '.' + arr[i].name + '</span><span>' + arr[i].score + '</span></div>'; }
+                var wBox = document.getElementById('simple-winner-box');
+                if (arr.length > 0) { document.getElementById('winner-text').innerText = arr.name + " (" + arr.score + ")"; wBox.style.display = 'block'; } else { wBox.style.display = 'none'; }
+            } catch (e) {}
+        }, 20);
+        function addPlayer(id, name, avatar) {
+            var img = new Image(); img.crossOrigin = "anonymous"; img.src = avatar || "https://tiktok.com";
+            var p = { id: id, name: (name || "User").substring(0, 8), score: 10, r: 20, x: Math.random() * (canvas.width - 60) + 30, y: Math.random() * (canvas.height - 60) + 30, vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2, img: img, loaded: false };
+            img.onload = function() { p.loaded = true; }; players[id] = p;
+        }
+        function connectTikTok() {
+            var user = document.getElementById('username').value; if (!user) return alert("Username ထည့်ပါဗျာ");
+            try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(function(e){}); } catch(e){}
+            var btn = document.getElementById('connectBtn'); var panel = document.getElementById('control-panel');
+            var selectedApi = apiEndpoints[currentApiIndex]; btn.innerText = "Connecting Line " + (currentApiIndex + 1) + "...";
+            var urlSeparator = selectedApi.includes("glitch") ? "/?room=" : "?room=";
+            ws = new WebSocket(selectedApi + urlSeparator + user);
+            ws.onopen = function() { btn.innerText = "Connected Line " + (currentApiIndex + 1) + "!"; setTimeout(function() { panel.style.display = 'none'; }, 1000); };
+            ws.onmessage = function(event) {
+                var data = JSON.parse(event.data);
+                if (data.type === 'chat') { if (!players[data.userId]) addPlayer(data.userId, data.nickname, data.profileUrl); }
+                if (data.type === 'gift') { if (!players[data.userId]) addPlayer(data.userId, data.nickname, data.profileUrl); players[data.userId].score += data.diamondCount * 10; players[data.userId].r = 20 + Math.min(players[data.userId].score / 5, 80); playHitSound(); }
+            };
+            ws.onclose = function() { panel.style.display = 'flex'; currentApiIndex = (currentApiIndex + 1) % apiEndpoints.length; btn.innerText = "Switching to Line " + (currentApiIndex + 1) + "..."; setTimeout(connectTikTok, 3000); };
+        }
+    </script>
+</body>
+</html>
