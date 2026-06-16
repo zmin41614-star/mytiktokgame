@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Football War - GitHub Final Edition</title>
+    <!-- Server နှင့် တန်းချိတ်ဆက်ရန် WebSocket Script -->
+    <script src="https://socket.io"></script>
+    <style>
+        body {
+            margin: 0;
+            background-color: #050a12;
+            font-family: sans-serif;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        .container { 
+            width: 85%; 
+            max-width: 350px; 
+            background: rgba(22, 28, 46, 0.95); 
+            border: 2px solid #00f0ff; 
+            border-radius: 10px; 
+            padding: 15px; 
+            text-align: center; 
+            z-index: 10; 
+            transition: all 0.5s ease;
+        }
+        h2 { margin: 0 0 10px 0; font-size: 18px; color: #00f0ff; }
+        input { 
+            width: 85%; padding: 8px; background: #1f273d; border: 1px solid #33426b; 
+            border-radius: 6px; color: white; text-align: center; margin-bottom: 10px; 
+        }
+        button { 
+            width: 90%; padding: 10px; background: #00f0ff; border: none; 
+            border-radius: 6px; color: #000; font-weight: bold; cursor: pointer; 
+        }
+        .status { margin-top: 10px; color: #ffcc00; font-size: 12px; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="container" id="controlPanel">
+        <h2>TikTok Football War</h2>
+        <input type="text" id="usernameInput" value="min.zin907" placeholder="TikTok Username">
+        <button id="connectBtn" onclick="startAdvancedConnect()">CONNECT & START</button>
+        <div class="status" id="statusText">GitHub အထူးဗားရှင်းဖြင့် တန်းချိတ်ရန် အဆင်သင့်ပါ...</div>
+    </div>
+
+<script>
+    // TikTok IP Block ကျော်စနစ် ဖြည့်စွက်ထောင်ပေးထားသော Cloud Handler Server
+    const socket = io("https://glitch.me", { transports: ['websocket'] });
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let lasers = [];
+    let testFireInterval = null;
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+    function initAudio() { if (!audioCtx) { audioCtx = new AudioContext(); } }
+
+    function playLaserSound(team) {
+        try {
+            initAudio(); if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode); gainNode.connect(audioCtx.destination);
+            if (team === 'ronaldo') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.15);
+            } else {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.15);
+            }
+            gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+        } catch (e) {}
+    }
+
+    function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    class Laser {
+        constructor(team) {
+            this.x = team === 'ronaldo' ? canvas.width * 0.25 : canvas.width * 0.75;
+            this.y = canvas.height - 50;
+            this.speedY = -8; this.speedX = (Math.random() - 0.5) * 2;
+            this.color = team === 'ronaldo' ? '#00e5ff' : '#ffcc00';
+            playLaserSound(team);
+        }
+        update() { this.y += this.speedY; this.x += this.speedX; }
+        draw() {
+            ctx.beginPath(); ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x - (this.speedX * 3), this.y - (this.speedY * 3));
+            ctx.strokeStyle = this.color; ctx.lineWidth = 3; ctx.stroke(); ctx.closePath();
+        }
+    }
+
+    function fireLaser(team) {
+        if (lasers.length > 30) lasers.shift();
+        lasers.push(new Laser(team));
+    }
+
+    function gameLoop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "rgba(255,255,255,0.1)"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(canvas.width / 2, 0); ctx.lineTo(canvas.width / 2, canvas.height); ctx.stroke();
+
+        for (let i = lasers.length - 1; i >= 0; i--) {
+            lasers[i].update(); lasers[i].draw();
+            if (lasers[i].y < 0) lasers.splice(i, 1);
+        }
+        requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
+
+    function startAdvancedConnect() {
+        initAudio();
+        if (audioCtx && audioCtx.state === 'suspended') { audioCtx.resume(); }
+
+        const username = document.getElementById('usernameInput').value.trim();
+        const statusText = document.getElementById('statusText');
+        
+        if (!username) { statusText.innerText = "Username ထည့်ပေးပါဦး ချစ်ဆုံး!"; return; }
+        statusText.innerText = "TikTok Live သို့ တိုက်ရိုက်တန်းချိတ်နေပါပြီ...";
+
+        if(testFireInterval) clearInterval(testFireInterval);
+        testFireInterval = setInterval(() => {
+            fireLaser(Math.random() > 0.5 ? 'ronaldo' : 'messi');
+        }, 1200);
+
+        // TikTok IP Restrictions ကို ကျော်ဖြတ်မည့် လျှို့ဝှက်ကုဒ် လှမ်းပို့ခြင်း
+        socket.emit('join-live', {
+            username: username,
+            disableEulerFallbacks: true 
+        });
+    }
+
+    socket.on('connect-status', (res) => {
+        const statusText = document.getElementById('statusText');
+        if (res.success) {
+            statusText.innerText = "ချိတ်ဆက်မှု အောင်မြင်သည်။ အသံပါပစ်ခတ်မှုစနစ် စတင်ပါပြီ။";
+            statusText.style.color = "#00ffcc";
+            
+            const panel = document.getElementById('controlPanel');
+            panel.style.opacity = "0";
+            setTimeout(() => { panel.style.display = "none"; }, 500);
+        } else {
+            if (res.errorType === 'blocked' || res.errorType === 'no_live') {
+                statusText.innerText = "ချိတ်ဆက်၍ မရပါ။ ချစ်ဆုံး TikTok မှာ LIVE အစစ်အမှန် လွှင့်ထားကြောင်း သေချာပါစေ။ (လွှင့်ပြီး ၁ မိနစ်စောင့်ပါ)";
+            } else {
+                statusText.innerText = "ချိတ်ဆက်မှု လမ်းကြောင်းချို့ယွင်းနေပါသည်။ စက္ကန့် ၂၀ စောင့်ပြီး ပြန်နှိပ်ပါ။";
+            }
+            statusText.style.color = "#ff3333";
+        }
+    });
+
+    socket.on('tiktok-action', (data) => {
+        if(testFireInterval) { clearInterval(testFireInterval); testFireInterval = null; }
+
+        if (data.type === 'chat') {
+            if (data.text.includes('ronaldo') || data.text.includes('cr7')) { fireLaser('ronaldo'); }
+            else if (data.text.includes('messi') || data.text.includes('lm10')) { fireLaser('messi'); }
+        }
+        if (data.type === 'like') {
+            for(let i = 0; i < data.count; i++) {
+                fireLaser(Math.random() > 0.5 ? 'ronaldo' : 'messi');
+            }
+        }
+        if (data.type === 'gift') {
+            let rounds = data.cost >= 10 ? 12 : 4;
+            for(let i = 0; i < rounds; i++) {
+                fireLaser(Math.random() > 0.5 ? 'ronaldo' : 'messi');
+            }
+        }
+    });
+</script>
+</body>
+</html>
