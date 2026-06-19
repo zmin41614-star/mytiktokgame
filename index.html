@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Live Interactive Game</title>
+    <!-- Socket.io Library for TikTok Live Connection -->
+    <script src="https://socket.io"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #panel {
+            background-color: #2a2a2a;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+            position: absolute;
+            z-index: 10;
+        }
+        h2 {
+            margin-bottom: 20px;
+            color: #ff0050;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 2px solid #444;
+            border-radius: 6px;
+            background-color: #333;
+            color: white;
+            font-size: 16px;
+            text-align: center;
+        }
+        input:focus {
+            border-color: #00f2fe;
+            outline: none;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(45deg, #ff0050, #00f2fe);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        #game-container {
+            display: none;
+            width: 100vw;
+            height: 100vh;
+            background-color: #228b22;
+            position: relative;
+        }
+        #score-board {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 40px;
+            font-size: 24px;
+            font-weight: bold;
+            background-color: rgba(0,0,0,0.6);
+            padding: 10px 30px;
+            border-radius: 30px;
+            z-index: 5;
+        }
+        .red-team { color: #ff3333; }
+        .blue-team { color: #3333ff; }
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. Username Input Panel -->
+    <div id="panel">
+        <h2>TikTok Live Game</h2>
+        <input type="text" id="usernameInput" placeholder="Enter TikTok Username">
+        <button id="connectButton">CONNECT & START</button>
+    </div>
+
+    <!-- 2. Main Game Screen -->
+    <div id="game-container">
+        <div id="score-board">
+            <span class="red-team">RED: <span id="redScore">0</span></span>
+            <span class="blue-team">BLUE: <span id="blueScore">0</span></span>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script>
+        const connectButton = document.getElementById('connectButton');
+        const usernameInput = document.getElementById('usernameInput');
+        const panel = document.getElementById('panel');
+        const gameContainer = document.getElementById('game-container');
+        const redScoreElement = document.getElementById('redScore');
+        const blueScoreElement = document.getElementById('blueScore');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let redScore = 0;
+        let blueScore = 0;
+        let isConnected = false;
+        let soldiers = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        connectButton.addEventListener('click', () => {
+            const username = usernameInput.value.trim();
+            
+            if (!username) {
+                alert("Please enter a TikTok Username!");
+                return;
+            }
+
+            panel.style.display = 'none';
+            gameContainer.style.display = 'block'; 
+
+            startTikTokConnection(username);
+            gameLoop();
+        });
+
+        function startTikTokConnection(username) {
+            const backendUrl = "https://onrender.com"; 
+            
+            console.log("Connecting to " + username);
+
+            if (username.toUpperCase() === 'TEST' || username.toUpperCase() === 'LOCAL') {
+                isConnected = true;
+                setInterval(spawnTestSoldiers, 1000); 
+                return;
+            }
+
+            try {
+                const socket = io(backendUrl, { query: { room: username } });
+
+                socket.on('connect', () => {
+                    console.log("Connected to Backend!");
+                    isConnected = true;
+                });
+
+                socket.on('chat', (data) => {
+                    if (data.comment.includes('1')) {
+                        spawnSoldier('RED');
+                    } else if (data.comment.includes('2')) {
+                        spawnSoldier('BLUE');
+                    }
+                });
+
+                socket.on('gift', (data) => {
+                    for (let i = 0; i < data.repeatCount * 5; i++) {
+                        spawnSoldier(data.giftName === 'Rose' ? 'RED' : 'BLUE');
+                    }
+                });
+
+            } catch (error) {
+                console.error("Connection error:", error);
+            }
+        }
+
+        function spawnSoldier(team) {
+            const x = team === 'RED' ? 50 : canvas.width - 50;
+            const y = Math.random() * (canvas.height - 100) + 50;
+            
+            soldiers.push({
+                x: x,
+                y: y,
+                team: team,
+                radius: 15,
+                speed: team === 'RED' ? 3 : -3
+            });
+
+            if (team === 'RED') {
+                redScore++;
+                if(redScoreElement) redScoreElement.innerText = redScore;
+            } else {
+                blueScore++;
+                if(blueScoreElement) blueScoreElement.innerText = blueScore;
+            }
+        }
+
+        function spawnTestSoldiers() {
+            const randomTeam = Math.random() > 0.5 ? 'RED' : 'BLUE';
+            spawnSoldier(randomTeam);
+        }
+
+        function updateGame() {
+            for (let i = soldiers.length - 1; i >= 0; i--) {
+                let s = soldiers[i];
+                s.x += s.speed;
+
+                if (s.x > canvas.width || s.x < 0) {
+                    soldiers.splice(i, 1);
+                }
+            }
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            soldiers.forEach(s => {
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+                ctx.fillStyle = s.team === 'RED' ? '#ff3333' : '#3333ff';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.closePath();
+            });
+        }
+
+        function gameLoop() {
+            updateGame();
+            drawGame();
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
