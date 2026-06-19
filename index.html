@@ -1,0 +1,100 @@
+// ==========================================
+// TikTok Live Game - Script အပြည့်အစုံ
+// ==========================================
+
+// HTML Element များကို ချိတ်ဆက်ခြင်း
+const connectButton = document.getElementById('connectButton');
+const usernameInput = document.getElementById('usernameInput');
+const panel = document.getElementById('panel');
+const gameContainer = document.getElementById('game-container');
+const redScoreElement = document.getElementById('redScore');
+const blueScoreElement = document.getElementById('blueScore');
+
+let redScore = 0;
+let blueScore = 0;
+let isConnected = false;
+
+// ၁။ Connect ခလုတ်နှိပ်လိုက်သည့်အခါ လုပ်ဆောင်မည့်အပိုင်း
+connectButton.addEventListener('click', () => {
+    const username = usernameInput.value.trim();
+    
+    if (!username) {
+        alert("ကျေးဇူးပြု၍ TikTok Username အမှန်ကို ရိုက်ထည့်ပါ ချစ်ဆုံး!");
+        return;
+    }
+
+    // ဘာစာလုံးရိုက်ရိုက် အကွက်ပျောက်မသွားစေရန် ဂိမ်းမျက်နှာပြင်ကို ချက်ချင်း ဖော်ပြပေးခြင်း
+    panel.style.display = 'none';
+    gameContainer.style.display = 'block'; 
+
+    // တကယ့် Live အစစ်အမှန်ဆီသို့ စတင် ချိတ်ဆက်ခြင်း
+    startTikTokConnection(username);
+});
+
+// ၂။ TikTok Live Server (Backend API) နှင့် ချိတ်ဆက်သည့် စနစ်
+function startTikTokConnection(username) {
+    //  မှတ်ချက် - ချစ်ဆုံးတို့၏ Backend API လင့်ခ်ကို ဤနေရာတွင် ထည့်ပေးရန် လိုအပ်ပါသည်
+    // (ဥပမာ - my---tiktok-api ပရောဂျက်ကို Render ပေါ်တင်ထားသည့် လင့်ခ်)
+    const backendUrl = "https://onrender.com"; 
+    
+    console.log(`${username} ၏ Live သို့ ချိတ်ဆက်နေပါသည်...`);
+
+    // သရုပ်ပြစမ်းသပ်ရန်အတွက် Username နေရာတွင် TEST ဟု ရိုက်ပါက အလိုအလျောက် ပေါ်စေခြင်း
+    if (username.toUpperCase() === 'TEST' || username.toUpperCase() === 'LOCAL') {
+        isConnected = true;
+        setInterval(spawnTestSoldiers, 1500); // ၁.၅ စက္ကန့်တိုင်း အစမ်းစစ်သည်တော်များ ထွက်လာစေရန်
+        return;
+    }
+
+    // Backend WebSockets မှတစ်ဆင့် TikTok ဒေတာများကို ဖမ်းယူခြင်း
+    try {
+        const socket = io(backendUrl, { query: { room: username } });
+
+        socket.on('connect', () => {
+            console.log("TikTok Live Server နှင့် ချိတ်ဆက်မှု အောင်မြင်ပါပြီ!");
+            isConnected = true;
+        });
+
+        // TikTok Comment တက်လာပါက စစ်သည်တော် ထွက်လာစေရန်
+        socket.on('chat', (data) => {
+            if (data.comment.includes('1')) {
+                spawnSoldier('RED');
+            } else if (data.comment.includes('2')) {
+                spawnSoldier('BLUE');
+            }
+        });
+
+        // TikTok Gift (လက်ဆောင်) ပေးပါက အလုံးအရင်း ထွက်လာစေရန်
+        socket.on('gift', (data) => {
+            for (let i = 0; i < data.repeatCount * 5; i++) {
+                spawnSoldier(data.giftName === 'Rose' ? 'RED' : 'BLUE');
+            }
+        });
+
+    } catch (error) {
+        console.error("ချိတ်ဆက်မှု လွဲချော်သွားပါသည် -", error);
+        // Error တက်သော်လည်း ဂိမ်းကွင်းပြင်ကြီး ပျောက်မသွားဘဲ ကျန်နေစေရန် ပြုလုပ်ထားပါသည်
+    }
+}
+
+// ၃။ ဂိမ်းကွင်းပြင်ထဲသို့ စစ်သည်တော် စက်ဝိုင်းလေးများ ထွက်လာစေမည့် စနစ်
+function spawnSoldier(team) {
+    console.log(`${team} အသင်းမှ စစ်သည်တော်တစ်ဦး ထွက်လာပါပြီ!`);
+    
+    // အမှတ်များကို တိုးမြှင့်ခြင်း
+    if (team === 'RED') {
+        redScore++;
+        redScoreElement.innerText = redScore;
+    } else {
+        blueScore++;
+        blueScoreElement.innerText = blueScore;
+    }
+
+    //  ချစ်ဆုံးတို့၏ ကွင်းပြင်ထဲတွင် စက်ဝိုင်းပုံစံများ ရေးဆွဲသည့် ကုဒ် (Logic) ကို ဤနေရာတွင် ဆက်ရေးပါ
+}
+
+// အစမ်းစမ်းသပ်ရန် (TEST Mode) အတွက် အလိုအလျောက် စစ်သည်တော် ထုတ်ပေးသည့် စနစ်
+function spawnTestSoldiers() {
+    const randomTeam = Math.random() > 0.5 ? 'RED' : 'BLUE';
+    spawnSoldier(randomTeam);
+}
